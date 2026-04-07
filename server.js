@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
+const VAT_PERCENT = 10;
 
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
@@ -188,10 +189,9 @@ const PROJECT_HEADERS = [
   'endDate',
   'remark',
   'logoPath',
-  'contractCurrency',
   'totalPrice',
-  'vatPercent',
-  'totalPriceWithVat',
+  'totalWithVat',
+  'profit',
   'createdAt',
   'updatedAt'
 ];
@@ -278,12 +278,11 @@ function rowToProject(row) {
     endDate: normalizeDate(values[8]),
     remark: toText(values[9]),
     logoPath: toText(values[10]),
-    contractCurrency: toText(values[11]) || 'LAK',
-    totalPrice: toNumber(values[12]),
-    vatPercent: toNumber(values[13]),
-    totalPriceWithVat: toNumber(values[14]),
-    createdAt: toText(values[15]),
-    updatedAt: toText(values[16]),
+    totalPrice: toNumber(values[11]),
+    totalWithVat: toNumber(values[12]),
+    profit: toNumber(values[13]),
+    createdAt: toText(values[14]),
+    updatedAt: toText(values[15]),
     _rowNumber: row.number
   };
 }
@@ -307,62 +306,69 @@ function rowToTransaction(row) {
   };
 }
 
+function readProjects(sheet) {
+  const projects = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    if (!row.getCell(1).value && !row.getCell(4).value) return;
+    projects.push(rowToProject(row));
+  });
+  return projects;
+}
+
+function readTransactions(sheet) {
+  const transactions = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    if (!row.getCell(1).value && !row.getCell(3).value) return;
+    transactions.push(rowToTransaction(row));
+  });
+  return transactions;
+}
+
 function projectToRow(project) {
   return [
-    project.id,
+    toText(project.id),
     toNumber(project.no),
-    project.projectCode,
-    project.projectName,
-    project.category,
-    project.owner,
-    project.startDate,
-    project.endDate,
-    project.remark,
-    project.logoPath,
-    project.contractCurrency,
+    toText(project.projectCode),
+    toText(project.projectName),
+    toText(project.category),
+    toText(project.owner),
+    normalizeDate(project.startDate),
+    normalizeDate(project.endDate),
+    toText(project.remark),
+    toText(project.logoPath),
     toNumber(project.totalPrice),
-    toNumber(project.vatPercent),
-    toNumber(project.totalPriceWithVat),
-    project.createdAt,
-    project.updatedAt
+    toNumber(project.totalWithVat),
+    toNumber(project.profit),
+    toText(project.createdAt),
+    toText(project.updatedAt)
   ];
 }
 
 function transactionToRow(tx) {
   return [
-    tx.id,
+    toText(tx.id),
     toNumber(tx.no),
-    tx.projectId,
-    tx.type,
-    tx.category,
-    tx.description,
-    tx.currency,
+    toText(tx.projectId),
+    toText(tx.type),
+    toText(tx.category),
+    toText(tx.description),
+    toText(tx.currency),
     toNumber(tx.amount),
-    tx.date,
-    tx.billPath,
-    tx.createdAt,
-    tx.updatedAt
+    normalizeDate(tx.date),
+    toText(tx.billPath),
+    toText(tx.createdAt),
+    toText(tx.updatedAt)
   ];
 }
 
 async function getAllData() {
   const { projectSheet, transactionSheet } = await openWorkbook();
-  const projects = [];
-  const transactions = [];
-
-  projectSheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
-    if (!row.getCell(1).value && !row.getCell(4).value) return;
-    projects.push(rowToProject(row));
-  });
-
-  transactionSheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
-    if (!row.getCell(1).value && !row.getCell(3).value) return;
-    transactions.push(rowToTransaction(row));
-  });
-
-  return { projects, transactions };
+  return {
+    projects: readProjects(projectSheet),
+    transactions: readTransactions(transactionSheet)
+  };
 }
 
 function nextProjectNo(projects) {
@@ -402,10 +408,9 @@ function validateTransaction(tx) {
   return '';
 }
 
-function calcTotalWithVat(totalPrice, vatPercent) {
+function calcTotalWithVat(totalPrice) {
   const total = toNumber(totalPrice);
-  const vat = toNumber(vatPercent);
-  return total + (total * vat) / 100;
+  return total + (total * VAT_PERCENT) / 100;
 }
 
 function calcActualCost(transactions) {
@@ -417,34 +422,75 @@ function calcActualCost(transactions) {
   }, 0);
 }
 
-function calcEstimatedProfit(totalPriceWithVat, actualCost) {
-  return toNumber(totalPriceWithVat) - toNumber(actualCost);
+function calcProfit(totalWithVat, actualCost) {
+  return toNumber(totalWithVat) - toNumber(actualCost);
 }
 
-function projectPayload(body, existing, req, projects) {
+function calculateProjectNumbers(project, transactions) {
+  const related = transactions.filter((tx) => tx.projectId === project.id);
+
+  const totals = related.reduce(
+    (sum, tx) => {
+      const amount = toNumber(tx.amount);
+      if (tx.type === 'income') sum.income += amount;
+      if (tx.type === 'investment') sum.investment += amount;
+      if (tx.type === 'expense') sum.expense += amount;
+      return sum;
+    },
+    { income: 0, investment: 0, expense: 0 }
+  );
+
+  const totalPrice = toNumber(project.totalPrice);
+  const totalWithVat = calcTotalWithVat(totalPrice);
+  const actualCost = calcActualCost(related);
+  const profit = calcProfit(totalWithVat, actualCost);
+
+  return {
+    totals,
+    totalPrice,
+    totalWithVat,
+    actualCost,
+    profit,
+    estimatedProfit: profit,
+    balance: totals.income - totals.investment - totals.expense,
+    transactionCount: related.length
+  };
+}
+
+function projectPayload(body, existing, req, projects, transactions) {
   const uploadedLogo = publicPathFromFile(req.files?.companyLogo?.[0]);
 
   const totalPrice = toNumber(body.totalPrice ?? existing?.totalPrice);
-  const vatPercent = toNumber(body.vatPercent ?? existing?.vatPercent);
-  const totalPriceWithVat = calcTotalWithVat(totalPrice, vatPercent);
+  const totalWithVat = calcTotalWithVat(totalPrice);
 
-  return {
+  const baseProject = {
     id: existing?.id || uuidv4(),
     no: existing?.no || nextProjectNo(projects),
     projectCode: existing?.projectCode || nextProjectCode(projects),
-    projectName: toText(body.projectName || existing?.projectName),
-    category: toText(body.category || existing?.category),
-    owner: toText(body.owner || existing?.owner),
-    startDate: normalizeDate(body.startDate || existing?.startDate),
-    endDate: normalizeDate(body.endDate || existing?.endDate),
-    remark: toText(body.remark || existing?.remark),
-    logoPath: uploadedLogo || toText(body.keepLogoPath || existing?.logoPath),
-    contractCurrency: toText(body.contractCurrency || existing?.contractCurrency || 'LAK').toUpperCase(),
+    projectName: toText(body.projectName ?? existing?.projectName),
+    category: toText(body.category ?? existing?.category),
+    owner: toText(body.owner ?? existing?.owner),
+    startDate: normalizeDate(body.startDate ?? existing?.startDate),
+    endDate: normalizeDate(body.endDate ?? existing?.endDate),
+    remark: toText(body.remark ?? existing?.remark),
+    logoPath: uploadedLogo || toText(body.keepLogoPath ?? existing?.logoPath),
     totalPrice,
-    vatPercent,
-    totalPriceWithVat,
+    totalWithVat,
+    profit: 0,
     createdAt: existing?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
+  };
+
+  const relatedTransactions = (transactions || []).filter(
+    (tx) => tx.projectId === baseProject.id
+  );
+
+  const actualCost = calcActualCost(relatedTransactions);
+  const profit = calcProfit(totalWithVat, actualCost);
+
+  return {
+    ...baseProject,
+    profit
   };
 }
 
@@ -474,29 +520,40 @@ function buildProjectSummary(project, transactions) {
       return bTime - aTime;
     });
 
-  const totals = related.reduce(
-    (sum, tx) => {
-      const amount = toNumber(tx.amount);
-      if (tx.type === 'income') sum.income += amount;
-      if (tx.type === 'investment') sum.investment += amount;
-      if (tx.type === 'expense') sum.expense += amount;
-      return sum;
-    },
-    { income: 0, investment: 0, expense: 0 }
-  );
-
-  const actualCost = calcActualCost(related);
-  const estimatedProfit = calcEstimatedProfit(project.totalPriceWithVat, actualCost);
+  const numbers = calculateProjectNumbers(project, related);
 
   return {
     ...project,
+    totalPrice: numbers.totalPrice,
+    totalWithVat: numbers.totalWithVat,
+    profit: numbers.profit,
     transactions: related.map(({ _rowNumber, ...tx }) => tx),
-    totals,
-    actualCost,
-    estimatedProfit,
-    balance: totals.income - totals.investment - totals.expense,
-    transactionCount: related.length
+    totals: numbers.totals,
+    actualCost: numbers.actualCost,
+    estimatedProfit: numbers.estimatedProfit,
+    balance: numbers.balance,
+    transactionCount: numbers.transactionCount
   };
+}
+
+function syncProjectFinancials(projectSheet, project, transactions) {
+  if (!project?._rowNumber) return project;
+
+  const numbers = calculateProjectNumbers(project, transactions);
+  const row = projectSheet.getRow(project._rowNumber);
+
+  const updatedProject = {
+    ...project,
+    totalPrice: numbers.totalPrice,
+    totalWithVat: numbers.totalWithVat,
+    profit: numbers.profit,
+    updatedAt: new Date().toISOString()
+  };
+
+  row.values = projectToRow(updatedProject);
+  row.commit();
+
+  return updatedProject;
 }
 
 app.get('/', (req, res) => {
@@ -637,10 +694,12 @@ app.get('/api/next-project-code', requireAuth, async (req, res) => {
 app.post('/api/projects', requireAuth, projectUpload, async (req, res) => {
   try {
     const result = await queueWrite(async () => {
-      const { workbook, projectSheet } = await openWorkbook();
-      const { projects, transactions } = await getAllData();
+      const { workbook, projectSheet, transactionSheet } = await openWorkbook();
 
-      const project = projectPayload(req.body, null, req, projects);
+      const projects = readProjects(projectSheet);
+      const transactions = readTransactions(transactionSheet);
+
+      const project = projectPayload(req.body, null, req, projects, transactions);
       const validation = validateProject(project);
       if (validation) {
         return { status: 400, body: { ok: false, error: validation } };
@@ -665,15 +724,24 @@ app.post('/api/projects', requireAuth, projectUpload, async (req, res) => {
 app.put('/api/projects/:id', requireAuth, projectUpload, async (req, res) => {
   try {
     const result = await queueWrite(async () => {
-      const { workbook, projectSheet } = await openWorkbook();
-      const { projects, transactions } = await getAllData();
+      const { workbook, projectSheet, transactionSheet } = await openWorkbook();
+
+      const projects = readProjects(projectSheet);
+      const transactions = readTransactions(transactionSheet);
 
       const existing = projects.find((item) => item.id === req.params.id);
       if (!existing) {
         return { status: 404, body: { ok: false, error: 'Project not found' } };
       }
 
-      const updated = projectPayload(req.body, existing, req, projects);
+      const updated = projectPayload(req.body, existing, req, projects, transactions);
+
+      updated.id = existing.id;
+      updated.no = existing.no;
+      updated.projectCode = existing.projectCode;
+      updated.createdAt = existing.createdAt;
+      updated.updatedAt = new Date().toISOString();
+
       const validation = validateProject(updated);
       if (validation) {
         return { status: 400, body: { ok: false, error: validation } };
@@ -684,14 +752,17 @@ app.put('/api/projects/:id', requireAuth, projectUpload, async (req, res) => {
       }
 
       const row = projectSheet.getRow(existing._rowNumber);
-      row.values = [null, ...projectToRow(updated)];
+      row.values = projectToRow(updated);
       row.commit();
 
       await saveWorkbook(workbook);
 
       return {
         status: 200,
-        body: { ok: true, project: buildProjectSummary(updated, transactions) }
+        body: {
+          ok: true,
+          project: buildProjectSummary(updated, transactions)
+        }
       };
     });
 
@@ -706,26 +777,39 @@ app.delete('/api/projects/:id', requireAuth, async (req, res) => {
   try {
     const result = await queueWrite(async () => {
       const { workbook, projectSheet, transactionSheet } = await openWorkbook();
-      const { projects, transactions } = await getAllData();
+
+      const projects = readProjects(projectSheet);
+      const transactions = readTransactions(transactionSheet);
 
       const existing = projects.find((item) => item.id === req.params.id);
       if (!existing) {
         return { status: 404, body: { ok: false, error: 'Project not found' } };
       }
 
-      if (existing.logoPath) removePublicFile(existing.logoPath);
+      if (!existing._rowNumber) {
+        return { status: 400, body: { ok: false, error: 'Project row number is missing' } };
+      }
+
+      if (existing.logoPath) {
+        removePublicFile(existing.logoPath);
+      }
 
       const related = transactions.filter((tx) => tx.projectId === existing.id);
+
       related.forEach((tx) => {
         if (tx.billPath) removePublicFile(tx.billPath);
       });
 
       related
         .map((tx) => tx._rowNumber)
+        .filter(Boolean)
         .sort((a, b) => b - a)
-        .forEach((rowNumber) => transactionSheet.spliceRows(rowNumber, 1));
+        .forEach((rowNumber) => {
+          transactionSheet.spliceRows(rowNumber, 1);
+        });
 
       projectSheet.spliceRows(existing._rowNumber, 1);
+
       await saveWorkbook(workbook);
 
       return { status: 200, body: { ok: true } };
@@ -741,7 +825,7 @@ app.delete('/api/projects/:id', requireAuth, async (req, res) => {
 app.post('/api/projects/:id/transactions', requireAuth, transactionUpload, async (req, res) => {
   try {
     const result = await queueWrite(async () => {
-      const { workbook, transactionSheet } = await openWorkbook();
+      const { workbook, projectSheet, transactionSheet } = await openWorkbook();
       const { projects, transactions } = await getAllData();
 
       const project = projects.find((item) => item.id === req.params.id);
@@ -756,6 +840,9 @@ app.post('/api/projects/:id/transactions', requireAuth, transactionUpload, async
       }
 
       transactionSheet.addRow(transactionToRow(tx));
+
+      const updatedProject = syncProjectFinancials(projectSheet, project, [...transactions, tx]);
+
       await saveWorkbook(workbook);
 
       return {
@@ -763,7 +850,7 @@ app.post('/api/projects/:id/transactions', requireAuth, transactionUpload, async
         body: {
           ok: true,
           transaction: tx,
-          project: buildProjectSummary(project, [...transactions, tx])
+          project: buildProjectSummary(updatedProject, [...transactions, tx])
         }
       };
     });
@@ -778,16 +865,24 @@ app.post('/api/projects/:id/transactions', requireAuth, transactionUpload, async
 app.delete('/api/transactions/:id', requireAuth, async (req, res) => {
   try {
     const result = await queueWrite(async () => {
-      const { workbook, transactionSheet } = await openWorkbook();
-      const { transactions } = await getAllData();
+      const { workbook, projectSheet, transactionSheet } = await openWorkbook();
+      const { projects, transactions } = await getAllData();
 
       const tx = transactions.find((item) => item.id === req.params.id);
       if (!tx) {
         return { status: 404, body: { ok: false, error: 'Transaction not found' } };
       }
 
+      const remainingTransactions = transactions.filter((item) => item.id !== tx.id);
+      const project = projects.find((item) => item.id === tx.projectId);
+
       if (tx.billPath) removePublicFile(tx.billPath);
       transactionSheet.spliceRows(tx._rowNumber, 1);
+
+      if (project) {
+        syncProjectFinancials(projectSheet, project, remainingTransactions);
+      }
+
       await saveWorkbook(workbook);
 
       return { status: 200, body: { ok: true } };

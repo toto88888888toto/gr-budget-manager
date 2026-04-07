@@ -287,12 +287,13 @@ button{
   margin-bottom:8px;
 }
 
-.kpi-value{
-  font-size:28px;
-  font-weight:800;
-  line-height:1;
-  letter-spacing:-0.02em;
-  word-break:break-word;
+.stat-value{
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Main layout */
@@ -642,12 +643,21 @@ input[readonly]{
   margin-bottom:8px;
 }
 
-.amount-box .amt{
-  font-size:18px;
+.amount-box .amt,
+.finance-box .amt,
+.finance-box .stat-value,
+.finance-box .metric-value,
+.finance-box strong{
+  display:block;
+  width:100%;
+  font-size:clamp(16px, 2vw, 18px);
   font-weight:800;
   line-height:1.2;
-  word-break:break-word;
-  letter-spacing:-0.01em;
+  letter-spacing:-0.02em;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  word-break:normal;
 }
 
 .profit-positive{
@@ -1034,10 +1044,14 @@ input[readonly]{
 }
 
 .finance-box strong{
-  font-size:22px;
+  display:block;
+  width:100%;
+  font-size:clamp(18px, 2vw, 22px);
   line-height:1.2;
   letter-spacing:-0.02em;
-  word-break:break-word;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 .finance-box.highlight{
@@ -1055,6 +1069,18 @@ input[readonly]{
 
 .finance-box.expense{
   background:var(--expense-bg);
+}
+
+.stat-value,
+.kpi-value,
+.summary-value,
+.metric-value{
+  font-size: clamp(18px, 2vw, 28px);
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Responsive */
@@ -1195,6 +1221,15 @@ input[readonly]{
   }
 
   .finance-box strong{
-    font-size:18px;
+    display: block;
+    width: 100%;
+
+    font-size: clamp(16px, 2vw, 18px);
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
