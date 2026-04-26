@@ -65,6 +65,7 @@ const kpiProjects = $("kpiProjects");
 const kpiIncome = $("kpiIncome");
 const kpiInvestment = $("kpiInvestment");
 const kpiExpense = $("kpiExpense");
+const kpiProfit = $("kpiProfit");
 
 // Datalists
 const projectCategoryList = $("projectCategoryList");
@@ -284,7 +285,8 @@ function buildProjectSummary(project) {
 
   const actualCost = investment + expense;
   const totalPriceWithVat = calcTotalWithVat(safeTotalPrice, safeVatPercent);
-  const estimatedProfit = income - totalPriceWithVat;
+  const vatAmount = totalPriceWithVat - safeTotalPrice;
+  const estimatedProfit = income - actualCost - vatAmount;
   const balance = income - actualCost;
 
   return {
@@ -342,15 +344,20 @@ function updateKPIs(projects) {
       sum.income += toNumber(project.totals?.income);
       sum.investment += toNumber(project.totals?.investment);
       sum.expense += toNumber(project.totals?.expense);
+      sum.profit += toNumber(project.estimatedProfit);
       return sum;
     },
-    { income: 0, investment: 0, expense: 0 }
+    { income: 0, investment: 0, expense: 0, profit: 0 }
   );
 
   kpiProjects.textContent = String(projects.length);
   kpiIncome.textContent = formatDisplayNumber(total.income);
   kpiInvestment.textContent = formatDisplayNumber(total.investment);
   kpiExpense.textContent = formatDisplayNumber(total.expense);
+  if (kpiProfit) {
+    kpiProfit.textContent = formatDisplayNumber(total.profit);
+    kpiProfit.style.color = total.profit >= 0 ? "" : "#dc2626";
+  }
 }
 
 async function loadNextProjectCode() {

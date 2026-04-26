@@ -10,7 +10,6 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
-const VAT_PERCENT = 10;
 
 const ROOT_DIR = __dirname;
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
@@ -23,6 +22,7 @@ const INDEX_HTML = path.join(PUBLIC_DIR, 'index.html');
 
 const PROJECT_SHEET = 'Projects';
 const TRANSACTION_SHEET = 'Transactions';
+const DEFAULT_VAT_PERCENT = 10;
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -189,7 +189,9 @@ const PROJECT_HEADERS = [
   'endDate',
   'remark',
   'logoPath',
+  'contractCurrency',
   'totalPrice',
+  'vatPercent',
   'totalWithVat',
   'profit',
   'createdAt',
@@ -278,11 +280,13 @@ function rowToProject(row) {
     endDate: normalizeDate(values[8]),
     remark: toText(values[9]),
     logoPath: toText(values[10]),
-    totalPrice: toNumber(values[11]),
-    totalWithVat: toNumber(values[12]),
-    profit: toNumber(values[13]),
-    createdAt: toText(values[14]),
-    updatedAt: toText(values[15]),
+    contractCurrency: toText(values[11]) || 'LAK',
+    totalPrice: toNumber(values[12]),
+    vatPercent: toNumber(values[13]),
+    totalWithVat: toNumber(values[14]),
+    profit: toNumber(values[15]),
+    createdAt: toText(values[16]),
+    updatedAt: toText(values[17]),
     _rowNumber: row.number
   };
 }
@@ -338,7 +342,9 @@ function projectToRow(project) {
     normalizeDate(project.endDate),
     toText(project.remark),
     toText(project.logoPath),
+    toText(project.contractCurrency || 'LAK'),
     toNumber(project.totalPrice),
+    toNumber(project.vatPercent),
     toNumber(project.totalWithVat),
     toNumber(project.profit),
     toText(project.createdAt),
@@ -408,9 +414,10 @@ function validateTransaction(tx) {
   return '';
 }
 
-function calcTotalWithVat(totalPrice) {
+function calcTotalWithVat(totalPrice, vatPercent = DEFAULT_VAT_PERCENT) {
   const total = toNumber(totalPrice);
-  return total + (total * VAT_PERCENT) / 100;
+  const vat = toNumber(vatPercent);
+  return total + (total * vat) / 100;
 }
 
 function calcActualCost(transactions) {
@@ -441,13 +448,18 @@ function calculateProjectNumbers(project, transactions) {
   );
 
   const totalPrice = toNumber(project.totalPrice);
-  const totalWithVat = calcTotalWithVat(totalPrice);
+  const vatPercent =
+    project.vatPercent === 0
+      ? 0
+      : toNumber(project.vatPercent || DEFAULT_VAT_PERCENT);
+  const totalWithVat = calcTotalWithVat(totalPrice, vatPercent);
   const actualCost = calcActualCost(related);
   const profit = calcProfit(totalWithVat, actualCost);
 
   return {
     totals,
     totalPrice,
+    vatPercent,
     totalWithVat,
     actualCost,
     profit,
@@ -461,7 +473,14 @@ function projectPayload(body, existing, req, projects, transactions) {
   const uploadedLogo = publicPathFromFile(req.files?.companyLogo?.[0]);
 
   const totalPrice = toNumber(body.totalPrice ?? existing?.totalPrice);
-  const totalWithVat = calcTotalWithVat(totalPrice);
+  const vatPercent =
+    body.vatPercent !== undefined && body.vatPercent !== null && body.vatPercent !== ''
+      ? toNumber(body.vatPercent)
+      : existing?.vatPercent === 0
+        ? 0
+        : toNumber(existing?.vatPercent || DEFAULT_VAT_PERCENT);
+
+  const totalWithVat = calcTotalWithVat(totalPrice, vatPercent);
 
   const baseProject = {
     id: existing?.id || uuidv4(),
@@ -474,7 +493,9 @@ function projectPayload(body, existing, req, projects, transactions) {
     endDate: normalizeDate(body.endDate ?? existing?.endDate),
     remark: toText(body.remark ?? existing?.remark),
     logoPath: uploadedLogo || toText(body.keepLogoPath ?? existing?.logoPath),
+    contractCurrency: toText(body.contractCurrency ?? existing?.contractCurrency ?? 'LAK').toUpperCase(),
     totalPrice,
+    vatPercent,
     totalWithVat,
     profit: 0,
     createdAt: existing?.createdAt || new Date().toISOString(),
@@ -524,7 +545,9 @@ function buildProjectSummary(project, transactions) {
 
   return {
     ...project,
+    contractCurrency: project.contractCurrency || 'LAK',
     totalPrice: numbers.totalPrice,
+    vatPercent: numbers.vatPercent,
     totalWithVat: numbers.totalWithVat,
     profit: numbers.profit,
     transactions: related.map(({ _rowNumber, ...tx }) => tx),
@@ -545,6 +568,7 @@ function syncProjectFinancials(projectSheet, project, transactions) {
   const updatedProject = {
     ...project,
     totalPrice: numbers.totalPrice,
+    vatPercent: numbers.vatPercent,
     totalWithVat: numbers.totalWithVat,
     profit: numbers.profit,
     updatedAt: new Date().toISOString()
