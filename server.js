@@ -50,9 +50,7 @@ app.use(
 );
 
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d' }));
-app.use('/style.css', express.static(path.join(PUBLIC_DIR, 'style.css')));
-app.use('/script.js', express.static(path.join(PUBLIC_DIR, 'script.js')));
-app.use('/images', express.static(path.join(PUBLIC_DIR, 'images')));
+app.use(express.static(PUBLIC_DIR)); // ← FIXED: serves all public files with correct content-type
 
 app.use((req, res, next) => {
   console.log(
