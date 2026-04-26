@@ -490,7 +490,11 @@
       document.body.classList.remove('modal-open');
     }
 
-    fab.addEventListener('click', openDrawer);
+    fab.addEventListener('click', () => {
+      const title = document.getElementById('drawerTitle');
+      if (title) title.textContent = 'New Project';
+      openDrawer();
+    });
     closeDrawerBtn.addEventListener('click', closeDrawerFn);
     drawerBackdrop.addEventListener('click', closeDrawerFn);
     window.openProjectDrawer = openDrawer;

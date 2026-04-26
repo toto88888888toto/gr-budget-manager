@@ -1162,9 +1162,16 @@ function attachEvents() {
   editProjectBtn?.addEventListener("click", () => {
     const project = allProjects.find((item) => item.id === currentProjectId);
     if (!project) return;
-    populateProjectForm(project);
     closeProjectModal();
-    if (typeof window.openProjectDrawer === "function") window.openProjectDrawer();
+    populateProjectForm(project);
+    const drawer = document.getElementById("projectFormDrawer");
+    if (drawer) {
+      drawer.classList.remove("hidden");
+      drawer.setAttribute("aria-hidden", "false");
+      document.body.classList.add("modal-open");
+      const title = document.getElementById("drawerTitle");
+      if (title) title.textContent = "Edit Project";
+    }
   });
 
   openAddTxFromDetailBtn?.addEventListener("click", () => {
