@@ -65,7 +65,6 @@ const kpiProjects = $("kpiProjects");
 const kpiIncome = $("kpiIncome");
 const kpiInvestment = $("kpiInvestment");
 const kpiExpense = $("kpiExpense");
-const kpiProfit = $("kpiProfit");
 
 // Datalists
 const projectCategoryList = $("projectCategoryList");
@@ -285,8 +284,7 @@ function buildProjectSummary(project) {
 
   const actualCost = investment + expense;
   const totalPriceWithVat = calcTotalWithVat(safeTotalPrice, safeVatPercent);
-  const vatAmount = totalPriceWithVat - safeTotalPrice;
-  const estimatedProfit = income - actualCost - vatAmount;
+  const estimatedProfit = income - totalPriceWithVat;
   const balance = income - actualCost;
 
   return {
@@ -344,41 +342,15 @@ function updateKPIs(projects) {
       sum.income += toNumber(project.totals?.income);
       sum.investment += toNumber(project.totals?.investment);
       sum.expense += toNumber(project.totals?.expense);
-      sum.profit += toNumber(project.estimatedProfit);
       return sum;
     },
-    { income: 0, investment: 0, expense: 0, profit: 0 }
+    { income: 0, investment: 0, expense: 0 }
   );
 
   kpiProjects.textContent = String(projects.length);
   kpiIncome.textContent = formatDisplayNumber(total.income);
   kpiInvestment.textContent = formatDisplayNumber(total.investment);
   kpiExpense.textContent = formatDisplayNumber(total.expense);
-
-  const kpiProfitEl = document.getElementById('kpiProfit');
-  if (kpiProfitEl) {
-    kpiProfitEl.textContent = formatDisplayNumber(total.profit);
-    const profitCard = kpiProfitEl.closest('.summary-item');
-    if (profitCard) profitCard.classList.toggle('profit-negative', total.profit < 0);
-  }
-
-  const kpiContractEl = document.getElementById('kpiContractValue');
-  const kpiContractSub = document.getElementById('kpiContractSub');
-  if (kpiContractEl) {
-    let totalContract = 0;
-    projects.forEach(p => {
-      const price = toNumber(p.totalPrice);
-      const vat = toNumber(p.vatPercent);
-      totalContract += price + (price * vat / 100);
-    });
-    const remaining = totalContract - total.income;
-    kpiContractEl.textContent = formatDisplayNumber(Math.abs(remaining));
-    if (kpiContractSub) {
-      kpiContractSub.textContent = 'Contract: ' + formatDisplayNumber(totalContract) + ' − Received: ' + formatDisplayNumber(total.income);
-    }
-    const contractCard = kpiContractEl.closest('.summary-item');
-    if (contractCard) contractCard.classList.toggle('contract-overcollected', remaining < 0);
-  }
 }
 
 async function loadNextProjectCode() {
@@ -1162,16 +1134,8 @@ function attachEvents() {
   editProjectBtn?.addEventListener("click", () => {
     const project = allProjects.find((item) => item.id === currentProjectId);
     if (!project) return;
-    closeProjectModal();
     populateProjectForm(project);
-    const drawer = document.getElementById("projectFormDrawer");
-    if (drawer) {
-      drawer.classList.remove("hidden");
-      drawer.setAttribute("aria-hidden", "false");
-      document.body.classList.add("modal-open");
-      const title = document.getElementById("drawerTitle");
-      if (title) title.textContent = "Edit Project";
-    }
+    closeProjectModal();
   });
 
   openAddTxFromDetailBtn?.addEventListener("click", () => {
