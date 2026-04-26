@@ -1164,6 +1164,7 @@ function attachEvents() {
     if (!project) return;
     populateProjectForm(project);
     closeProjectModal();
+    if (typeof window.openProjectDrawer === "function") window.openProjectDrawer();
   });
 
   openAddTxFromDetailBtn?.addEventListener("click", () => {
