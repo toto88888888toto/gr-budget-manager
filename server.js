@@ -50,7 +50,7 @@ app.use(
 );
 
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d' }));
-app.use(express.static(PUBLIC_DIR)); // ← FIXED: serves all public files with correct content-type
+app.use(express.static(PUBLIC_DIR));
 
 app.use((req, res, next) => {
   console.log(
@@ -103,6 +103,14 @@ function normalizeDate(value) {
 
 function toText(value) {
   return String(value ?? '').trim();
+}
+
+// ── PROJECT STATUS ─────────────────────────────────────
+const VALID_STATUSES = ['draft', 'active', 'on_hold', 'done', 'cancelled'];
+
+function normalizeStatus(value) {
+  const v = String(value || '').toLowerCase().trim().replace(/[\s-]+/g, '_');
+  return VALID_STATUSES.includes(v) ? v : 'draft';
 }
 
 function publicPathFromFile(file) {
@@ -192,6 +200,7 @@ const PROJECT_HEADERS = [
   'vatPercent',
   'totalWithVat',
   'profit',
+  'status',
   'createdAt',
   'updatedAt'
 ];
@@ -283,8 +292,9 @@ function rowToProject(row) {
     vatPercent: toNumber(values[13]),
     totalWithVat: toNumber(values[14]),
     profit: toNumber(values[15]),
-    createdAt: toText(values[16]),
-    updatedAt: toText(values[17]),
+    status: normalizeStatus(values[16]),
+    createdAt: toText(values[17]),
+    updatedAt: toText(values[18]),
     _rowNumber: row.number
   };
 }
@@ -345,6 +355,7 @@ function projectToRow(project) {
     toNumber(project.vatPercent),
     toNumber(project.totalWithVat),
     toNumber(project.profit),
+    normalizeStatus(project.status),
     toText(project.createdAt),
     toText(project.updatedAt)
   ];
@@ -492,6 +503,7 @@ function projectPayload(body, existing, req, projects, transactions) {
     remark: toText(body.remark ?? existing?.remark),
     logoPath: uploadedLogo || toText(body.keepLogoPath ?? existing?.logoPath),
     contractCurrency: toText(body.contractCurrency ?? existing?.contractCurrency ?? 'LAK').toUpperCase(),
+    status: normalizeStatus(body.status ?? existing?.status ?? 'draft'),
     totalPrice,
     vatPercent,
     totalWithVat,
@@ -544,6 +556,7 @@ function buildProjectSummary(project, transactions) {
   return {
     ...project,
     contractCurrency: project.contractCurrency || 'LAK',
+    status: normalizeStatus(project.status),
     totalPrice: numbers.totalPrice,
     vatPercent: numbers.vatPercent,
     totalWithVat: numbers.totalWithVat,
@@ -792,6 +805,42 @@ app.put('/api/projects/:id', requireAuth, projectUpload, async (req, res) => {
   } catch (error) {
     console.error('Cannot update project:', error);
     return sendError(res, 'Cannot update project');
+  }
+});
+
+// ── Quick status update (used by card dropdown) ─────────
+app.patch('/api/projects/:id/status', requireAuth, async (req, res) => {
+  try {
+    const newStatus = normalizeStatus(req.body?.status);
+
+    const result = await queueWrite(async () => {
+      const { workbook, projectSheet } = await openWorkbook();
+      const projects = readProjects(projectSheet);
+
+      const existing = projects.find((item) => item.id === req.params.id);
+      if (!existing) {
+        return { status: 404, body: { ok: false, error: 'Project not found' } };
+      }
+
+      const updated = {
+        ...existing,
+        status: newStatus,
+        updatedAt: new Date().toISOString()
+      };
+
+      const row = projectSheet.getRow(existing._rowNumber);
+      row.values = projectToRow(updated);
+      row.commit();
+
+      await saveWorkbook(workbook);
+
+      return { status: 200, body: { ok: true, status: newStatus } };
+    });
+
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('Cannot update status:', error);
+    return sendError(res, 'Cannot update status');
   }
 });
 

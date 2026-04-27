@@ -430,9 +430,61 @@ input[type="file"] {
 
 .project-title-wrap { flex: 1; min-width: 0; padding-top: 2px; }
 
+.project-code-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 3px;
+}
+
 .project-code {
   font-size: 12px; font-weight: 700; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--accent); margin-bottom: 3px;
+  text-transform: uppercase; color: var(--accent);
+}
+
+/* ── STATUS DROPDOWN BADGE ─────────────────────────── */
+.status-select {
+  height: 24px;
+  padding: 0 22px 0 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  border: 1px solid;
+  cursor: pointer;
+  width: auto;
+  min-width: 90px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  transition: all .15s ease;
+}
+
+.status-select:hover { transform: translateY(-1px); filter: brightness(0.97); }
+.status-select:focus { box-shadow: 0 0 0 3px rgba(0,0,0,0.08); }
+
+.status-draft {
+  background-color: #f3f4f6; color: #6b7280; border-color: #d1d5db;
+}
+.status-active {
+  background-color: var(--success-bg); color: var(--success); border-color: var(--success-border);
+}
+.status-on_hold {
+  background-color: #fef3c7; color: #b45309; border-color: #fcd34d;
+}
+.status-done {
+  background-color: var(--investment-bg); color: var(--investment); border-color: var(--investment-border);
+}
+.status-cancelled {
+  background-color: var(--expense-bg); color: var(--expense); border-color: var(--expense-border);
+}
+
+body.dark .status-draft {
+  background-color: rgba(160,160,160,0.12); color: #a0a0a0; border-color: rgba(160,160,160,0.28);
+}
+body.dark .status-on_hold {
+  background-color: rgba(245,180,40,0.12); color: #f5b428; border-color: rgba(245,180,40,0.28);
 }
 
 .project-name {

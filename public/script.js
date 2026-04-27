@@ -117,6 +117,25 @@ let currentProjectId = "";
 const DEFAULT_PROJECT_CATEGORIES = ["Administrative expenses"];
 const DEFAULT_TX_CATEGORIES = ["Administrative expenses"];
 
+// ── PROJECT STATUS ─────────────────────────────────────
+const PROJECT_STATUSES = [
+  { value: "draft",     label: "Draft" },
+  { value: "active",    label: "Active" },
+  { value: "on_hold",   label: "On Hold" },
+  { value: "done",      label: "Done" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+function normalizeStatus(value) {
+  const v = String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  return PROJECT_STATUSES.find((s) => s.value === v) ? v : "draft";
+}
+
+function getStatusLabel(value) {
+  const s = PROJECT_STATUSES.find((x) => x.value === normalizeStatus(value));
+  return s ? s.label : "Draft";
+}
+
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -326,6 +345,7 @@ function normalizeProject(project) {
   return {
     ...project,
     contractCurrency: project?.contractCurrency || "LAK",
+    status: normalizeStatus(project?.status),
     totalPrice: summary.totalPrice,
     vatPercent: summary.vatPercent,
     totalPriceWithVat: summary.totalPriceWithVat,
@@ -553,13 +573,23 @@ function renderProjectCard(item) {
   const isActive = item.id === currentProjectId;
   const currency = item.contractCurrency || "LAK";
   const profitClass = toNumber(item.estimatedProfit) >= 0 ? "profit-positive" : "profit-negative";
+  const status = normalizeStatus(item.status);
+
+  const statusOptions = PROJECT_STATUSES.map(
+    (s) => `<option value="${s.value}" ${s.value === status ? "selected" : ""}>${escapeHtml(s.label)}</option>`
+  ).join("");
 
   return `
     <article class="project-card ${isActive ? "active" : ""}" data-project-id="${item.id}">
       <div class="project-head">
         ${getLogoCardHtml(item)}
         <div class="project-title-wrap">
-          <div class="project-code">${escapeHtml(item.projectCode || "")}</div>
+          <div class="project-code-row">
+            <span class="project-code">${escapeHtml(item.projectCode || "")}</span>
+            <select class="status-select status-${status}" data-action="change-status" data-id="${item.id}" onclick="event.stopPropagation()">
+              ${statusOptions}
+            </select>
+          </div>
           <h3 class="project-name">${escapeHtml(item.projectName || "")}</h3>
         </div>
       </div>
@@ -971,7 +1001,35 @@ async function deleteProjectById(id) {
   }
 }
 
+async function handleStatusChange(event) {
+  const select = event.target.closest('select[data-action="change-status"]');
+  if (!select) return;
+
+  const id = select.dataset.id;
+  const newStatus = select.value;
+
+  // Optimistic UI update
+  select.className = `status-select status-${newStatus}`;
+  const project = allProjects.find((item) => item.id === id);
+  if (project) project.status = newStatus;
+
+  try {
+    await fetchJSON(`/api/projects/${id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
+    });
+  } catch (error) {
+    alert(error.message);
+    // Reload to revert UI
+    await loadProjects(true);
+  }
+}
+
 async function handleProjectListClick(event) {
+  // Ignore clicks on the status dropdown itself
+  if (event.target.closest('select[data-action="change-status"]')) return;
+
   const actionButton = event.target.closest("button[data-action]");
   if (actionButton) {
     const action = actionButton.dataset.action;
@@ -1124,6 +1182,7 @@ function attachEvents() {
   contractCurrency?.addEventListener("change", updateProjectPricePreview);
 
   projectList.addEventListener("click", handleProjectListClick);
+  projectList.addEventListener("change", handleStatusChange);
   projectModalHistory?.addEventListener("click", handleHistoryClick);
   txModalHistory?.addEventListener("click", handleHistoryClick);
 
