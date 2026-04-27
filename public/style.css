@@ -464,7 +464,6 @@ input[type="file"] {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-<<<<<<< HEAD
 .amount-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -563,7 +562,6 @@ input[type="file"] {
   letter-spacing: .03em; text-transform: uppercase;
   border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
 }
-.badge.soft { }
 .badge-income { background: var(--success-bg); color: var(--success); border-color: var(--success-border); }
 .badge-investment { background: var(--investment-bg); color: var(--investment); border-color: var(--investment-border); }
 .badge-expense { background: var(--expense-bg); color: var(--expense); border-color: var(--expense-border); }
